@@ -1,0 +1,70 @@
+ifeq (${shell uname}, Darwin)
+# gcc 4.2 from MacOS is really not up to scratch anymore 
+CC		 = clang
+AVR_ROOT 	:= /usr/local/CrossPack-AVR
+AVR_INC 	:= ${AVR_ROOT}/avr-4/
+AVR 		:= ${AVR_ROOT}/bin/avr-
+AVR_DUDE := ${AVR_ROOT}/bin/avrdude
+AVR_DUDE_CONF := -C ${AVR_ROOT}/etc/avrdude.conf
+else
+AVR_ROOT 	:= /usr/lib/avr
+AVR_INC 	:= ${AVR_ROOT}
+AVR 		:= avr-
+AVR_DUDE := /usr/bin/avrdude
+
+# FIXME uname -o doesn't work on bsd derivatives
+#WIN := ${shell uname -o}
+
+ifeq (${WIN}, Msys)
+AVR_ROOT    := ${shell echo "${AVR32_HOME}" | tr '\\' '/'}
+AVR_INC     := ${AVR_ROOT}/avr
+AVR         := ${AVR_ROOT}/bin/avr-
+AVR_DUDE := ${AVR_ROOT}/bin/avrdude
+IPATH       += ${PREFIX}/include
+CFLAGS      += -I${PREFIX}/include
+LDFLAGS		+= -L/lib -L/local/lib
+CFLAGS 		+= -DNO_COLOR
+else
+CFLAGS 		+= -fPIC
+endif
+endif
+
+AVR_CPPFLAGS= ${CPPFLAGS} -idirafter ${AVR_INC}/include
+
+CC 		?= clang
+AR 		?= ar
+RANLIB 		?= ranlib
+MKDIR		?= mkdir -p
+INSTALL		?= install
+SHELL	 	:= ${shell which bash}
+	
+OBJ 		= obj-${shell $(CC) -dumpmachine}
+LDFLAGS 	+= -L${LIBDIR} -lsimavr 
+
+# The weird "-Wl,--undefined=_mmcu,--section-start=.mmcu=0x910000"
+# is used to tell the linker not to discard the .mmcu section,
+# otherwise the --gc-sections will delete it.
+
+%.hex: %.axf
+	@${AVR}objcopy -j .text -j .data -j .eeprom -O ihex ${<} ${@}
+
+%.s: %.axf
+	@${AVR}objdump -j .text -j .data -j .bss -d  ${<} > ${@}
+
+# --mcall-prologues can be used here, but messes up debugging a little
+%.axf: %.c 
+	@echo AVR-CC ${<}
+	@part=${<} ; part=$${part/_*}; \
+	${AVR}gcc -Wall -gdwarf-2 -Os -std=gnu99 \
+			-mmcu=$$part \
+			-DF_CPU=$(F_CPU) \
+			-fno-inline-small-functions \
+			-ffunction-sections -fdata-sections \
+			-Wl,--relax,--gc-sections \
+			-Wl,--undefined=_mmcu,--section-start=.mmcu=0x910000 \
+			${^} -o ${@}
+	@${AVR}size ${@}|sed '1d'
+
+clean-${OBJ}:
+	rm -rf ${OBJ}
+

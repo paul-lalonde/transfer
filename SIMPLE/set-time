@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Set the date on programmer jig
+# set-time hh:mm
+
+IFS=':'
+read -a bar <<< "$1"
+IFS=
+
+F=/tmp/settime$RANDOM
+echo $F
+CHECK=`bc <<EOF
+obase=16
+ibase=16
+100-(03+04+${bar[0]}+${bar[1]})%100
+EOF
+`
+echo ":0300040000"${bar[1]}${bar[0]}$CHECK  > $F
+echo ":00000001FF" >> $F
+avrdude -p m328p -c USBtiny -U eeprom:w:$F:i
